@@ -1,0 +1,28 @@
+[
+  {
+    "MapName": "Lạp Tuyết Địa",
+    "AnchorImage": "map_title_lap_tuyet_dia.png",
+    "PointA": {
+      "X": 420,
+      "Y": 460
+    },
+    "PointB": {
+      "X": 820,
+      "Y": 160
+    },
+    "EstimatedTravelMs": 10000
+  },
+  {
+    "MapName": "Map2",
+    "AnchorImage": "map_title_map2.png",
+    "PointA": {
+      "X": 400,
+      "Y": 400
+    },
+    "PointB": {
+      "X": 750,
+      "Y": 200
+    },
+    "EstimatedTravelMs": 8000
+  }
+]

@@ -13,7 +13,7 @@ namespace WPFToolGame
         private readonly Action<string> _log;
 
         // State di chuyển
-        private bool _headingToA = true; // true=đang đi về A, false=đang đi về B
+        private bool _headingToA = true;
         private MapProfile? _lastMap = null;
 
         public Navigator(VuaPhapThuatBot bot, MapProfileManager mapManager, Action<string> log)
@@ -23,20 +23,21 @@ namespace WPFToolGame
             _log = log;
         }
 
-        /// <summary>
-        /// Gọi khi State = InMap. Return true nếu đã di chuyển xong 1 leg.
-        /// </summary>
         public NavigateResult Execute(Bitmap screen, CancellationToken token)
         {
-            // 1. Nhận diện map
+            // 1. ĐẢM BẢO MINIMAP ĐÃ MỞ TRƯỚC TIÊN (Thay đổi thứ tự)
+            if (!EnsureMinimapOpen(screen))
+                return NavigateResult.Waiting; // Chờ vòng lặp sau chụp ảnh mới có minimap
+
+            // 2. NHẬN DIỆN MAP (Lúc này chắc chắn 100% minimap đã mở)
             var profile = _mapManager.Detect(screen, _bot);
             if (profile == null)
             {
-                _log("[Nav] Không nhận ra map!");
+                _log("[Nav] Không nhận ra map! (Hãy check lại ảnh Title map)");
                 return NavigateResult.UnknownMap;
             }
 
-            // Nếu vừa chuyển map → reset về điểm A
+            // 3. Nếu qua map mới -> Reset về điểm A
             if (_lastMap?.MapName != profile.MapName)
             {
                 _log($"[Nav] Phát hiện map mới: {profile.MapName}. Reset về điểm A.");
@@ -44,32 +45,34 @@ namespace WPFToolGame
                 _lastMap = profile;
             }
 
-            // 2. Mở minimap nếu chưa mở
-            if (!EnsureMinimapOpen(screen)) return NavigateResult.Waiting;
-
-            // 3. Xác định điểm đích
+            // 4. Xác định điểm đích
             Point target = _headingToA ? profile.PointA : profile.PointB;
             string targetName = _headingToA ? "A" : "B";
             _log($"[Nav] {profile.MapName} → Chạy đến điểm {targetName} ({target.X},{target.Y})");
 
-            // 4. Click + đo thời gian thực tế
+            // 5. Click + chờ pathfinding + đo thời gian
             _bot.HardClickAt(target.X, target.Y);
-            var sw = Stopwatch.StartNew();
 
-            // 5. Chờ đến nơi
+            // [FIX 1 TỪ BÀI TRƯỚC]: Bắt buộc chờ game vẽ đường màu xanh ra
+            Thread.Sleep(1500);
+
+            var sw = Stopwatch.StartNew();
             var result = WaitForArrival(profile, token);
             sw.Stop();
 
+            // 6. Xử lý kết quả di chuyển
             if (result == ArrivalResult.Arrived)
             {
                 _log($"[Nav] Đến điểm {targetName} sau {sw.ElapsedMilliseconds}ms. Đổi chiều.");
                 _mapManager.UpdateTravelTime(profile, sw.ElapsedMilliseconds);
-                _headingToA = !_headingToA; // Đổi điểm
+                _headingToA = !_headingToA; // Đổi điểm cho lần chạy tiếp
                 return NavigateResult.Arrived;
             }
             else if (result == ArrivalResult.CombatDetected)
             {
-                _log("[Nav] Vào combat giữa đường.");
+                _log("[Nav] Vào combat giữa đường. Đổi hướng cho lần sau.");
+                // [FIX 2 TỪ BÀI TRƯỚC]: Đảo chiều luôn để đánh xong không bị chạy lùi lại chỗ cũ
+                _headingToA = !_headingToA;
                 return NavigateResult.CombatDetected;
             }
             else // Timeout
@@ -81,20 +84,25 @@ namespace WPFToolGame
 
         private bool EnsureMinimapOpen(Bitmap screen)
         {
-            bool isOpen = _bot.FindTemplate(screen, "anchor_minimap_open.png", 0.80).HasValue;
+            // Tận dụng nút Thế giới (đặc trưng của minimap) thay vì dùng ảnh mới
+            // NHỚ SỬA ĐƯỜNG DẪN Ở ĐÂY NẾU BẠN CHIA FOLDER RỒI (Ví dụ: @"Images\Buttons\nut_the_gioi.png")
+            bool isOpen = _bot.FindTemplate(screen, @"Images\Buttons\nut_the_gioi_ban_do.png", 0.75).HasValue;
+
             if (!isOpen)
             {
                 _log("[Nav] Mở minimap...");
-                _bot.HardPressKey(Win32Api.VK_OEM_3);
-                Thread.Sleep(1000);
-                return false; // Để vòng lặp capture screen mới
+                _bot.HardPressKey(Win32Api.VK_OEM_3); // Bấm phím ~
+
+                // Cực kỳ quan trọng: Phải ngủ để chờ game mở xong cái UI Minimap
+                Thread.Sleep(1500);
+                return false;
             }
+
             return true;
         }
 
         private ArrivalResult WaitForArrival(MapProfile profile, CancellationToken token)
         {
-            // Timeout = thời gian ước tính * 1.5 (buffer an toàn)
             int timeout = (int)(profile.EstimatedTravelMs * 1.5);
             var sw = Stopwatch.StartNew();
 
@@ -103,18 +111,18 @@ namespace WPFToolGame
                 token.ThrowIfCancellationRequested();
                 Thread.Sleep(400);
 
-                using Bitmap screen = _bot.CaptureGameScreen();
+                using Bitmap currentScreen = _bot.CaptureGameScreen();
 
-                // Ưu tiên check combat trước
-                if (_bot.FindTemplate(screen, "anchor_turn_user.png", 0.75).HasValue ||
-                    _bot.FindTemplate(screen, "anchor_turn_pet.png", 0.75).HasValue)
+                // Check Combat
+                // NHỚ SỬA ĐƯỜNG DẪN ẢNH Ở ĐÂY NẾU ĐÃ CHIA FOLDER
+                if (_bot.FindTemplate(currentScreen, @"anchor_turn_user.png", 0.75).HasValue ||
+                    _bot.FindTemplate(currentScreen, @"anchor_turn_pet.png", 0.75).HasValue)
                     return ArrivalResult.CombatDetected;
 
-                // Check đường xanh đã biến mất chưa
-                bool stillMoving = HasGreenPath(screen);
+                // Check đường xanh
+                bool stillMoving = HasGreenPath(currentScreen);
                 if (!stillMoving)
                 {
-                    // Chờ thêm 300ms confirm (tránh false positive khi mới bắt đầu chạy)
                     Thread.Sleep(300);
                     using Bitmap confirm = _bot.CaptureGameScreen();
                     if (!HasGreenPath(confirm))
@@ -126,7 +134,6 @@ namespace WPFToolGame
 
         private bool HasGreenPath(Bitmap screen)
         {
-            // Vùng minimap theo ảnh của bạn (điều chỉnh theo resolution thực)
             const int x1 = 370, x2 = 880;
             const int y1 = 65, y2 = 510;
             int count = 0;
@@ -135,7 +142,6 @@ namespace WPFToolGame
                 for (int y = y1; y < y2; y += 15)
                 {
                     var c = screen.GetPixel(x, y);
-                    // Xanh lá thuần (đường pathfinding)
                     if (c.G > 160 && c.R < 100 && c.B < 100)
                         count++;
                 }
@@ -143,7 +149,6 @@ namespace WPFToolGame
         }
     }
 
-    // Enums kết quả
     public enum NavigateResult { Arrived, CombatDetected, Timeout, UnknownMap, Waiting }
     public enum ArrivalResult { Arrived, CombatDetected, Timeout }
 }

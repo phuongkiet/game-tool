@@ -104,6 +104,9 @@ namespace WPFToolGame
             while (!token.IsCancellationRequested)
             {
                 using Bitmap screen = _bot.CaptureGameScreen();
+
+                screen.Save("bot_dang_nhin_thay_gi.png");
+
                 BotState state = DetermineState(screen);
 
                 switch (state)
@@ -137,54 +140,11 @@ namespace WPFToolGame
         private BotState DetermineState(Bitmap screen)
         {
             // Kiểm tra các Dấu hiệu nhận biết (Anchor Images)
-            if (_bot.FindTemplate(screen, "anchor_turn_user.png", 0.75).HasValue) return BotState.Combat_UserTurn;
-            if (_bot.FindTemplate(screen, "anchor_turn_pet.png", 0.75).HasValue) return BotState.Combat_PetTurn;
-            if (_bot.FindTemplate(screen, "anchor_map.png", 0.75).HasValue) return BotState.InMap;
+            if (_bot.FindTemplate(screen, @"Images\Anchors\anchor_turn_user.png", 0.75).HasValue) return BotState.Combat_UserTurn;
+            if (_bot.FindTemplate(screen, @"Images\Anchors\anchor_turn_pet.png", 0.75).HasValue) return BotState.Combat_PetTurn;
+            if (_bot.FindTemplate(screen, @"Images\Anchors\anchor_map.png", 0.75).HasValue) return BotState.InMap;
 
             return BotState.Unknown;
-        }
-
-        // ==========================================
-        // LOGIC 1: ĐI TUẦN TRA NGOÀI MAP
-        // ==========================================
-        private void HandleMapLogic(Bitmap screen)
-        {
-            UpdateStatusToUI("Đang ở ngoài Map...");
-
-            // Tìm cái nút "Thế giới" (hoặc cái icon gì đó trên bản đồ lớn mà bạn đã cắt lọt lòng bằng ảnh của Bot)
-            System.Drawing.Point? mapLonDaMo = _bot.FindTemplate(screen, "nut_the_gioi.png", 0.75);
-
-            if (mapLonDaMo.HasValue)
-            {
-                // =============================================================
-                // MAP ĐANG MỞ -> CHỈ CLICK TỌA ĐỘ VÀ ĐỂ ĐÓ CHO NHÂN VẬT CHẠY
-                // =============================================================
-                LogToUI($"[Auto-Route] Map đang mở. Click chạy tới điểm {(_currentRouteIndex + 1)}/{_routePoints.Length}");
-
-                int targetMapX = _routePoints[_currentRouteIndex].X;
-                int targetMapY = _routePoints[_currentRouteIndex].Y;
-
-                _bot.HardClickAt(targetMapX, targetMapY);
-
-                // Chuyển sang tọa độ tiếp theo sẵn cho lần chạy sau
-                _currentRouteIndex++;
-                if (_currentRouteIndex >= _routePoints.Length) _currentRouteIndex = 0;
-
-                // Cho Bot ngủ một đoạn để nhân vật lon ton chạy trên map.
-                // Giờ cứ ung dung để đó, gặp quái game tự tắt map thì bot nhảy sang State Combat thôi!
-                Thread.Sleep(6000);
-            }
-            else
-            {
-                // =============================================================
-                // MAP ĐANG ĐÓNG (Vừa bật tool, hoặc vừa đánh xong bị game đóng mất)
-                // =============================================================
-                LogToUI("Bản đồ đang đóng, gõ ~ để mở...");
-                _bot.HardPressKey(Win32Api.VK_OEM_3);
-
-                // Ngủ 1.5 giây chờ game vẽ cái khung bản đồ ra
-                Thread.Sleep(1500);
-            }
         }
 
         // ==========================================
@@ -194,13 +154,13 @@ namespace WPFToolGame
         {
             UpdateStatusToUI("Đang Combat (Lượt User)");
 
-            System.Drawing.Point? baoBaoLoc = _bot.FindTemplate(screen, "baobao_icon.png", 0.85);
+            System.Drawing.Point? baoBaoLoc = _bot.FindTemplate(screen, @"Images\Anchors\baobao_icon.png", 0.85);
 
             if (baoBaoLoc.HasValue)
             {
                 // --- TRƯỜNG HỢP CÓ PET ---
                 LogToUI("Phát hiện BẢO BẢO! Đang ném lưới...");
-                System.Drawing.Point? nutBatLoc = _bot.FindTemplate(screen, "nut_bat.png", 0.8);
+                System.Drawing.Point? nutBatLoc = _bot.FindTemplate(screen, @"Images\Buttons\nut_bat.png", 0.8);
                 if (nutBatLoc.HasValue)
                 {
                     _bot.HardClickAt(nutBatLoc.Value.X, nutBatLoc.Value.Y);
@@ -216,7 +176,7 @@ namespace WPFToolGame
             {
                 // --- TRƯỜNG HỢP KHÔNG CÓ PET (ĐÁNH QUÁI THƯỜNG) ---
                 LogToUI("Đánh quái thường...");
-                System.Drawing.Point? tanCongLoc = _bot.FindTemplate(screen, "nut_tan_cong.png", 0.8);
+                System.Drawing.Point? tanCongLoc = _bot.FindTemplate(screen, @"Images\Buttons\nut_tan_cong.png", 0.8);
                 if (tanCongLoc.HasValue)
                 {
                     // Click nút Tấn công (nó sẽ tự đánh mục tiêu gần nhất, hoặc tự động kích hoạt Auto)
@@ -239,7 +199,7 @@ namespace WPFToolGame
             {
                 // USER ĐANG BẮT PET -> PET PHẢI PHÒNG NGỰ
                 LogToUI("Pet Phòng ngự để chờ bắt...");
-                System.Drawing.Point? phongNguLoc = _bot.FindTemplate(screen, "nut_phong_ngu.png", 0.8);
+                System.Drawing.Point? phongNguLoc = _bot.FindTemplate(screen, @"Images\Buttons\nut_phong_ngu.png", 0.8);
                 if (phongNguLoc.HasValue)
                 {
                     _bot.HardClickAt(phongNguLoc.Value.X, phongNguLoc.Value.Y);
@@ -251,7 +211,7 @@ namespace WPFToolGame
             {
                 // USER ĐÁNH THƯỜNG -> PET CŨNG ĐÁNH THƯỜNG
                 LogToUI("Pet tấn công...");
-                System.Drawing.Point? tanCongLoc = _bot.FindTemplate(screen, "nut_tan_cong.png", 0.8);
+                System.Drawing.Point? tanCongLoc = _bot.FindTemplate(screen, @"Images\Buttons\nut_tan_cong.png", 0.8);
                 if (tanCongLoc.HasValue)
                 {
                     _bot.HardClickAt(tanCongLoc.Value.X, tanCongLoc.Value.Y);
